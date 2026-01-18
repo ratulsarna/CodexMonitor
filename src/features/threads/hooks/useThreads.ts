@@ -89,6 +89,10 @@ function asString(value: unknown) {
   return typeof value === "string" ? value : value ? String(value) : "";
 }
 
+function normalizeRootPath(value: string) {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
 function extractRpcErrorMessage(response: unknown) {
   if (!response || typeof response !== "object") {
     return null;
@@ -828,6 +832,7 @@ export function useThreads({
 
   const listThreadsForWorkspace = useCallback(
     async (workspace: WorkspaceInfo) => {
+      const workspacePath = normalizeRootPath(workspace.path);
       dispatch({
         type: "setThreadListLoading",
         workspaceId: workspace.id,
@@ -848,7 +853,7 @@ export function useThreads({
       try {
         const matchingThreads: Record<string, unknown>[] = [];
         const targetCount = 20;
-        const pageSize = 20;
+        const pageSize = 100;
         let cursor: string | null = null;
         do {
           const response =
@@ -872,7 +877,8 @@ export function useThreads({
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
-              (thread) => String(thread?.cwd ?? "") === workspace.path,
+              (thread) =>
+                normalizeRootPath(String(thread?.cwd ?? "")) === workspacePath,
             ),
           );
           cursor = nextCursor;
@@ -983,6 +989,7 @@ export function useThreads({
       if (!nextCursor) {
         return;
       }
+      const workspacePath = normalizeRootPath(workspace.path);
       const existing = state.threadsByWorkspace[workspace.id] ?? [];
       dispatch({
         type: "setThreadListPaging",
@@ -999,7 +1006,7 @@ export function useThreads({
       try {
         const matchingThreads: Record<string, unknown>[] = [];
         const targetCount = 20;
-        const pageSize = 20;
+        const pageSize = 100;
         let cursor: string | null = nextCursor;
         do {
           const response =
@@ -1023,7 +1030,8 @@ export function useThreads({
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
-              (thread) => String(thread?.cwd ?? "") === workspace.path,
+              (thread) =>
+                normalizeRootPath(String(thread?.cwd ?? "")) === workspacePath,
             ),
           );
           cursor = next;
