@@ -341,9 +341,7 @@ pub(crate) async fn add_clone(
     )
     .await
     {
-        if destination_path.exists() {
-            let _ = std::fs::remove_dir_all(&destination_path);
-        }
+        let _ = tokio::fs::remove_dir_all(&destination_path).await;
         return Err(error);
     }
 
@@ -377,9 +375,7 @@ pub(crate) async fn add_clone(
     let session = match spawn_workspace_session(entry.clone(), default_bin, app, codex_home).await {
         Ok(session) => session,
         Err(error) => {
-            if destination_path.exists() {
-                let _ = std::fs::remove_dir_all(&destination_path);
-            }
+            let _ = tokio::fs::remove_dir_all(&destination_path).await;
             return Err(error);
         }
     };
@@ -396,9 +392,7 @@ pub(crate) async fn add_clone(
         }
         let mut child = session.child.lock().await;
         let _ = child.kill().await;
-        if destination_path.exists() {
-            let _ = std::fs::remove_dir_all(&destination_path);
-        }
+        let _ = tokio::fs::remove_dir_all(&destination_path).await;
         return Err(error);
     }
 
