@@ -62,7 +62,7 @@ export function ClonePrompt({
               event.preventDefault();
               onCancel();
             }
-            if (event.key === "Enter" && canCreate) {
+            if (event.key === "Enter" && canCreate && !isBusy) {
               event.preventDefault();
               onConfirm();
             }
@@ -79,16 +79,16 @@ export function ClonePrompt({
             placeholder="Not set"
             readOnly
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onCancel();
-              }
-              if (event.key === "Enter" && canCreate) {
-                event.preventDefault();
-                onConfirm();
-              }
-            }}
-          />
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCancel();
+            }
+            if (event.key === "Enter" && canCreate && !isBusy) {
+              event.preventDefault();
+              onConfirm();
+            }
+          }}
+        />
           <button
             type="button"
             className="ghost clone-modal-button"
@@ -147,4 +147,3 @@ export function ClonePrompt({
     </div>
   );
 }
-
