@@ -255,12 +255,22 @@ pub(crate) async fn add_workspace(
     };
     let codex_home = resolve_codex_home(&entry, None);
     let session = spawn_workspace_session(entry.clone(), default_bin, app, codex_home).await?;
-    {
+
+    if let Err(error) = {
         let mut workspaces = state.workspaces.lock().await;
         workspaces.insert(entry.id.clone(), entry.clone());
         let list: Vec<_> = workspaces.values().cloned().collect();
-        write_workspaces(&state.storage_path, &list)?;
+        write_workspaces(&state.storage_path, &list)
+    } {
+        {
+            let mut workspaces = state.workspaces.lock().await;
+            workspaces.remove(&entry.id);
+        }
+        let mut child = session.child.lock().await;
+        let _ = child.kill().await;
+        return Err(error);
     }
+
     state
         .sessions
         .lock()
@@ -364,13 +374,34 @@ pub(crate) async fn add_clone(
         settings.codex_bin.clone()
     };
     let codex_home = resolve_codex_home(&entry, None);
-    let session = spawn_workspace_session(entry.clone(), default_bin, app, codex_home).await?;
-    {
+    let session = match spawn_workspace_session(entry.clone(), default_bin, app, codex_home).await {
+        Ok(session) => session,
+        Err(error) => {
+            if destination_path.exists() {
+                let _ = std::fs::remove_dir_all(&destination_path);
+            }
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = {
         let mut workspaces = state.workspaces.lock().await;
         workspaces.insert(entry.id.clone(), entry.clone());
         let list: Vec<_> = workspaces.values().cloned().collect();
-        write_workspaces(&state.storage_path, &list)?;
+        write_workspaces(&state.storage_path, &list)
+    } {
+        {
+            let mut workspaces = state.workspaces.lock().await;
+            workspaces.remove(&entry.id);
+        }
+        let mut child = session.child.lock().await;
+        let _ = child.kill().await;
+        if destination_path.exists() {
+            let _ = std::fs::remove_dir_all(&destination_path);
+        }
+        return Err(error);
     }
+
     state
         .sessions
         .lock()
