@@ -90,8 +90,8 @@
   color: var(--text-subtle);
   font-size: 12px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: auto;
+  text-overflow: clip;
 }
 
 .clone-modal-actions {
@@ -115,4 +115,3 @@
   border-radius: 10px;
   white-space: nowrap;
 }
-

@@ -87,19 +87,25 @@ export function ClonePrompt({
             value={copiesFolder}
             placeholder="Not set"
             readOnly
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              if (!isBusy) {
-                onCancel();
+            onFocus={(event) => {
+              event.currentTarget.select();
+              requestAnimationFrame(() => {
+                event.currentTarget.scrollLeft = event.currentTarget.scrollWidth;
+              });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                if (!isBusy) {
+                  onCancel();
+                }
               }
-            }
-            if (event.key === "Enter" && canCreate && !isBusy) {
-              event.preventDefault();
-              onConfirm();
-            }
-          }}
-        />
+              if (event.key === "Enter" && canCreate && !isBusy) {
+                event.preventDefault();
+                onConfirm();
+              }
+            }}
+          />
           <button
             type="button"
             className="ghost clone-modal-button"
@@ -121,9 +127,42 @@ export function ClonePrompt({
           <div className="clone-modal-suggested">
             <div className="clone-modal-suggested-label">Suggested</div>
             <div className="clone-modal-suggested-row">
-              <div className="clone-modal-suggested-path" title={suggestedCopiesFolder ?? ""}>
-                {suggestedCopiesFolder}
-              </div>
+              <input
+                className="clone-modal-suggested-path"
+                value={suggestedCopiesFolder ?? ""}
+                readOnly
+                aria-label="Suggested copies folder"
+                title={suggestedCopiesFolder ?? ""}
+                onFocus={(event) => {
+                  event.currentTarget.select();
+                  requestAnimationFrame(() => {
+                    event.currentTarget.scrollLeft = event.currentTarget.scrollWidth;
+                  });
+                }}
+                onClick={(event) => {
+                  event.currentTarget.select();
+                  requestAnimationFrame(() => {
+                    event.currentTarget.scrollLeft = event.currentTarget.scrollWidth;
+                  });
+                }}
+              />
+              <button
+                type="button"
+                className="ghost clone-modal-button"
+                onClick={async () => {
+                  if (!suggestedCopiesFolder) {
+                    return;
+                  }
+                  try {
+                    await navigator.clipboard.writeText(suggestedCopiesFolder);
+                  } catch {
+                    // Ignore clipboard failures (e.g. permission denied).
+                  }
+                }}
+                disabled={isBusy || !suggestedCopiesFolder}
+              >
+                Copy
+              </button>
               <button
                 type="button"
                 className="ghost clone-modal-button"
