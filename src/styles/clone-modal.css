@@ -61,7 +61,13 @@
   resize: none;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.clone-modal-input--path::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .clone-modal-folder-row {
@@ -96,9 +102,6 @@
   background: var(--surface-card-muted);
   color: var(--text-subtle);
   font-size: 12px;
-  white-space: nowrap;
-  overflow: auto;
-  text-overflow: clip;
 }
 
 .clone-modal-actions {
