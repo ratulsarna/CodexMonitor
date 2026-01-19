@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles/base.css";
 import "./styles/buttons.css";
 import "./styles/sidebar.css";
@@ -42,6 +41,7 @@ import { useGitLog } from "./features/git/hooks/useGitLog";
 import { useGitHubIssues } from "./features/git/hooks/useGitHubIssues";
 import { useGitHubPullRequests } from "./features/git/hooks/useGitHubPullRequests";
 import { useGitHubPullRequestDiffs } from "./features/git/hooks/useGitHubPullRequestDiffs";
+import { useGitHubPullRequestComments } from "./features/git/hooks/useGitHubPullRequestComments";
 import { useGitRemote } from "./features/git/hooks/useGitRemote";
 import { useGitRepoScan } from "./features/git/hooks/useGitRepoScan";
 import { useModels } from "./features/models/hooks/useModels";
@@ -56,6 +56,8 @@ import { useWorkspaceRestore } from "./features/workspaces/hooks/useWorkspaceRes
 import { useResizablePanels } from "./features/layout/hooks/useResizablePanels";
 import { useLayoutMode } from "./features/layout/hooks/useLayoutMode";
 import { useSidebarToggles } from "./features/layout/hooks/useSidebarToggles";
+import { useTransparencyPreference } from "./features/layout/hooks/useTransparencyPreference";
+import { useWindowLabel } from "./features/layout/hooks/useWindowLabel";
 import {
   RightPanelCollapseButton,
   SidebarCollapseButton,
@@ -64,6 +66,7 @@ import {
 import { useAppSettings } from "./features/settings/hooks/useAppSettings";
 import { useUpdater } from "./features/update/hooks/useUpdater";
 import { useComposerImages } from "./features/composer/hooks/useComposerImages";
+import { useComposerShortcuts } from "./features/composer/hooks/useComposerShortcuts";
 import { useDictationModel } from "./features/dictation/hooks/useDictationModel";
 import { useDictation } from "./features/dictation/hooks/useDictation";
 import { useHoldToDictate } from "./features/dictation/hooks/useHoldToDictate";
@@ -79,7 +82,12 @@ import { useCopyThread } from "./features/threads/hooks/useCopyThread";
 import { usePanelVisibility } from "./features/layout/hooks/usePanelVisibility";
 import { useTerminalController } from "./features/terminal/hooks/useTerminalController";
 import { playNotificationSound } from "./utils/notificationSounds";
-import { pickWorkspacePath } from "./services/tauri";
+import {
+  pickWorkspacePath,
+  revertGitFile,
+  stageGitFile,
+  unstageGitFile,
+} from "./services/tauri";
 import type {
   AccessMode,
   GitHubPullRequest,
@@ -87,25 +95,13 @@ import type {
   WorkspaceInfo,
 } from "./types";
 
-function useWindowLabel() {
-  const [label, setLabel] = useState("main");
-  useEffect(() => {
-    try {
-      const window = getCurrentWindow();
-      setLabel(window.label ?? "main");
-    } catch {
-      setLabel("main");
-    }
-  }, []);
-  return label;
-}
-
 function MainApp() {
   const {
     settings: appSettings,
     setSettings: setAppSettings,
     saveSettings,
-    doctor
+    doctor,
+    isLoading: appSettingsLoading
   } = useAppSettings();
   const dictationModel = useDictationModel(appSettings.dictationModelId);
   const {
@@ -185,15 +181,18 @@ function MainApp() {
   const [composerInsert, setComposerInsert] = useState<QueuedMessage | null>(
     null
   );
-  type SettingsSection = "projects" | "display" | "dictation" | "codex" | "experimental";
+  type SettingsSection =
+    | "projects"
+    | "display"
+    | "dictation"
+    | "shortcuts"
+    | "codex"
+    | "experimental";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(
     null,
   );
-  const [reduceTransparency, setReduceTransparency] = useState(() => {
-    const stored = localStorage.getItem("reduceTransparency");
-    return stored === "true";
-  });
+  const { reduceTransparency, setReduceTransparency } = useTransparencyPreference();
   const dictationReady = dictationModel.status?.state === "ready";
   const holdDictationKey = (appSettings.dictationHoldKey ?? "").toLowerCase();
   const handleToggleDictation = useCallback(async () => {
@@ -313,10 +312,6 @@ function MainApp() {
     );
   }, [appSettings.defaultAccessMode]);
 
-  useEffect(() => {
-    localStorage.setItem("reduceTransparency", String(reduceTransparency));
-  }, [reduceTransparency]);
-
   const { status: gitStatus, refresh: refreshGitStatus } =
     useGitStatus(activeWorkspace);
   const compactTab = isTablet ? tabletTab : activeTab;
@@ -328,7 +323,8 @@ function MainApp() {
   const {
     diffs: gitDiffs,
     isLoading: isDiffLoading,
-    error: diffError
+    error: diffError,
+    refresh: refreshGitDiffs,
   } = useGitDiffs(activeWorkspace, gitStatus.files, shouldLoadDiffs);
   const {
     entries: gitLogEntries,
@@ -362,6 +358,15 @@ function MainApp() {
     selectedPullRequest?.number ?? null,
     shouldLoadDiffs && diffSource === "pr"
   );
+  const {
+    comments: gitPullRequestComments,
+    isLoading: gitPullRequestCommentsLoading,
+    error: gitPullRequestCommentsError
+  } = useGitHubPullRequestComments(
+    activeWorkspace,
+    selectedPullRequest?.number ?? null,
+    shouldLoadDiffs && diffSource === "pr"
+  );
   const { remote: gitRemoteUrl } = useGitRemote(activeWorkspace);
   const {
     repos: gitRootCandidates,
@@ -381,7 +386,27 @@ function MainApp() {
     reasoningOptions,
     selectedEffort,
     setSelectedEffort
-  } = useModels({ activeWorkspace, onDebug: addDebugEntry });
+  } = useModels({
+    activeWorkspace,
+    onDebug: addDebugEntry,
+    preferredModelId: appSettings.lastComposerModelId,
+    preferredEffort: appSettings.lastComposerReasoningEffort,
+  });
+
+  useComposerShortcuts({
+    textareaRef: composerInputRef,
+    modelShortcut: appSettings.composerModelShortcut,
+    accessShortcut: appSettings.composerAccessShortcut,
+    reasoningShortcut: appSettings.composerReasoningShortcut,
+    models,
+    selectedModelId,
+    onSelectModel: setSelectedModelId,
+    accessMode,
+    onSelectAccessMode: setAccessMode,
+    reasoningOptions,
+    selectedEffort,
+    onSelectEffort: setSelectedEffort,
+  });
   const {
     collaborationModes,
     selectedCollaborationMode,
@@ -409,6 +434,30 @@ function MainApp() {
   const handleCreateBranch = async (name: string) => {
     await createBranch(name);
     refreshGitStatus();
+  };
+  const handleStageGitFile = async (path: string) => {
+    if (!activeWorkspace) {
+      return;
+    }
+    await stageGitFile(activeWorkspace.id, path);
+    refreshGitStatus();
+    refreshGitDiffs();
+  };
+  const handleUnstageGitFile = async (path: string) => {
+    if (!activeWorkspace) {
+      return;
+    }
+    await unstageGitFile(activeWorkspace.id, path);
+    refreshGitStatus();
+    refreshGitDiffs();
+  };
+  const handleRevertGitFile = async (path: string) => {
+    if (!activeWorkspace) {
+      return;
+    }
+    await revertGitFile(activeWorkspace.id, path);
+    refreshGitStatus();
+    refreshGitDiffs();
   };
 
   const resolvedModel = selectedModel?.model ?? null;
@@ -471,6 +520,36 @@ function MainApp() {
     diffSource === "pr" ? gitPullRequestDiffsError : diffError;
 
   useEffect(() => {
+    if (appSettingsLoading) {
+      return;
+    }
+    if (!selectedModelId && selectedEffort === null) {
+      return;
+    }
+    setAppSettings((current) => {
+      if (
+        current.lastComposerModelId === selectedModelId &&
+        current.lastComposerReasoningEffort === selectedEffort
+      ) {
+        return current;
+      }
+      const nextSettings = {
+        ...current,
+        lastComposerModelId: selectedModelId,
+        lastComposerReasoningEffort: selectedEffort,
+      };
+      void queueSaveSettings(nextSettings);
+      return nextSettings;
+    });
+  }, [
+    appSettingsLoading,
+    queueSaveSettings,
+    selectedEffort,
+    selectedModelId,
+    setAppSettings,
+  ]);
+
+  useEffect(() => {
     if (diffSource !== "pr" || centerMode !== "diff") {
       return;
     }
@@ -492,6 +571,7 @@ function MainApp() {
     activeItems,
     approvals,
     threadsByWorkspace,
+    threadParentById,
     threadStatusById,
     threadListLoadingByWorkspace,
     threadListPagingByWorkspace,
@@ -970,6 +1050,7 @@ function MainApp() {
     groupedWorkspaces,
     hasWorkspaceGroups: workspaceGroups.length > 0,
     threadsByWorkspace,
+    threadParentById,
     threadStatusById,
     threadListLoadingByWorkspace,
     threadListPagingByWorkspace,
@@ -1110,6 +1191,10 @@ function MainApp() {
     gitPullRequestsLoading,
     gitPullRequestsError,
     selectedPullRequestNumber: selectedPullRequest?.number ?? null,
+    selectedPullRequest: diffSource === "pr" ? selectedPullRequest : null,
+    selectedPullRequestComments: diffSource === "pr" ? gitPullRequestComments : [],
+    selectedPullRequestCommentsLoading: gitPullRequestCommentsLoading,
+    selectedPullRequestCommentsError: gitPullRequestCommentsError,
     onSelectPullRequest: handleSelectPullRequest,
     gitRemoteUrl,
     gitRoot: activeGitRoot,
@@ -1127,6 +1212,9 @@ function MainApp() {
       void handleSetGitRoot(null);
     },
     onPickGitRoot: handlePickGitRoot,
+    onStageGitFile: handleStageGitFile,
+    onUnstageGitFile: handleUnstageGitFile,
+    onRevertGitFile: handleRevertGitFile,
     gitDiffs: activeDiffs,
     gitDiffLoading: activeDiffLoading,
     gitDiffError: activeDiffError,

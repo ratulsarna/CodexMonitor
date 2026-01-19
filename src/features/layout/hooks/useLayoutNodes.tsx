@@ -28,6 +28,7 @@ import type {
   DictationTranscript,
   GitFileStatus,
   GitHubIssue,
+  GitHubPullRequestComment,
   GitHubPullRequest,
   GitLogEntry,
   ModelOption,
@@ -66,6 +67,7 @@ type LayoutNodesOptions = {
   }>;
   hasWorkspaceGroups: boolean;
   threadsByWorkspace: Record<string, ThreadSummary[]>;
+  threadParentById: Record<string, string>;
   threadStatusById: Record<string, ThreadActivityStatus>;
   threadListLoadingByWorkspace: Record<string, boolean>;
   threadListPagingByWorkspace: Record<string, boolean>;
@@ -137,6 +139,8 @@ type LayoutNodesOptions = {
   gitStatus: {
     branchName: string;
     files: GitFileStatus[];
+    stagedFiles: GitFileStatus[];
+    unstagedFiles: GitFileStatus[];
     totalAdditions: number;
     totalDeletions: number;
     error: string | null;
@@ -162,6 +166,10 @@ type LayoutNodesOptions = {
   gitPullRequestsLoading: boolean;
   gitPullRequestsError: string | null;
   selectedPullRequestNumber: number | null;
+  selectedPullRequest: GitHubPullRequest | null;
+  selectedPullRequestComments: GitHubPullRequestComment[];
+  selectedPullRequestCommentsLoading: boolean;
+  selectedPullRequestCommentsError: string | null;
   onSelectPullRequest: (pullRequest: GitHubPullRequest) => void;
   gitRemoteUrl: string | null;
   gitRoot: string | null;
@@ -175,6 +183,9 @@ type LayoutNodesOptions = {
   onSelectGitRoot: (path: string) => void;
   onClearGitRoot: () => void;
   onPickGitRoot: () => void | Promise<void>;
+  onStageGitFile: (path: string) => Promise<void>;
+  onUnstageGitFile: (path: string) => Promise<void>;
+  onRevertGitFile: (path: string) => Promise<void>;
   gitDiffs: GitDiffViewerItem[];
   gitDiffLoading: boolean;
   gitDiffError: string | null;
@@ -277,6 +288,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       groupedWorkspaces={options.groupedWorkspaces}
       hasWorkspaceGroups={options.hasWorkspaceGroups}
       threadsByWorkspace={options.threadsByWorkspace}
+      threadParentById={options.threadParentById}
       threadStatusById={options.threadStatusById}
       threadListLoadingByWorkspace={options.threadListLoadingByWorkspace}
       threadListPagingByWorkspace={options.threadListPagingByWorkspace}
@@ -462,8 +474,10 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         error={options.gitStatus.error}
         logError={options.gitLogError}
         logLoading={options.gitLogLoading}
-        files={options.gitStatus.files}
+        stagedFiles={options.gitStatus.stagedFiles}
+        unstagedFiles={options.gitStatus.unstagedFiles}
         onSelectFile={options.onSelectDiff}
+        selectedPath={options.selectedDiffPath}
         logEntries={options.gitLogEntries}
         logTotal={options.gitLogTotal}
         logAhead={options.gitLogAhead}
@@ -494,6 +508,9 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         onSelectGitRoot={options.onSelectGitRoot}
         onClearGitRoot={options.onClearGitRoot}
         onPickGitRoot={options.onPickGitRoot}
+        onStageFile={options.onStageGitFile}
+        onUnstageFile={options.onUnstageGitFile}
+        onRevertFile={options.onRevertGitFile}
       />
     );
 
@@ -503,6 +520,10 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       selectedPath={options.selectedDiffPath}
       isLoading={options.gitDiffLoading}
       error={options.gitDiffError}
+      pullRequest={options.selectedPullRequest}
+      pullRequestComments={options.selectedPullRequestComments}
+      pullRequestCommentsLoading={options.selectedPullRequestCommentsLoading}
+      pullRequestCommentsError={options.selectedPullRequestCommentsError}
       onActivePathChange={options.onDiffActivePathChange}
     />
   );

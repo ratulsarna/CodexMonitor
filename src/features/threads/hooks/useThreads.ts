@@ -89,6 +89,14 @@ function asString(value: unknown) {
   return typeof value === "string" ? value : value ? String(value) : "";
 }
 
+function normalizeStringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => asString(entry)).filter(Boolean);
+  }
+  const single = asString(value);
+  return single ? [single] : [];
+}
+
 function normalizeRootPath(value: string) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
@@ -452,6 +460,84 @@ export function useThreads({
     }
   }, [onMessageActivity]);
 
+  const wouldCreateThreadCycle = useCallback(
+    (parentId: string, childId: string) => {
+      const visited = new Set([childId]);
+      let current: string | undefined = parentId;
+      while (current) {
+        if (visited.has(current)) {
+          return true;
+        }
+        visited.add(current);
+        current = state.threadParentById[current];
+      }
+      return false;
+    },
+    [state.threadParentById],
+  );
+
+  const updateThreadParent = useCallback(
+    (parentId: string, childIds: string[]) => {
+      if (!parentId || childIds.length === 0) {
+        return;
+      }
+      childIds.forEach((childId) => {
+        if (!childId || childId === parentId) {
+          return;
+        }
+        const existingParent = state.threadParentById[childId];
+        if (existingParent === parentId) {
+          return;
+        }
+        if (existingParent) {
+          return;
+        }
+        if (wouldCreateThreadCycle(parentId, childId)) {
+          return;
+        }
+        dispatch({ type: "setThreadParent", threadId: childId, parentId });
+      });
+    },
+    [state.threadParentById, wouldCreateThreadCycle],
+  );
+
+  const applyCollabThreadLinks = useCallback(
+    (fallbackThreadId: string, item: Record<string, unknown>) => {
+      const itemType = asString(item?.type ?? "");
+      if (itemType !== "collabToolCall" && itemType !== "collabAgentToolCall") {
+        return;
+      }
+      const sender = asString(item.senderThreadId ?? item.sender_thread_id ?? "");
+      const parentId = sender || fallbackThreadId;
+      if (!parentId) {
+        return;
+      }
+      const receivers = [
+        ...normalizeStringList(item.receiverThreadId ?? item.receiver_thread_id),
+        ...normalizeStringList(item.receiverThreadIds ?? item.receiver_thread_ids),
+        ...normalizeStringList(item.newThreadId ?? item.new_thread_id),
+      ];
+      updateThreadParent(parentId, receivers);
+    },
+    [updateThreadParent],
+  );
+
+  const applyCollabThreadLinksFromThread = useCallback(
+    (fallbackThreadId: string, thread: Record<string, unknown>) => {
+      const turns = Array.isArray(thread.turns) ? thread.turns : [];
+      turns.forEach((turn) => {
+        const turnRecord = turn as Record<string, unknown>;
+        const turnItems = Array.isArray(turnRecord.items)
+          ? (turnRecord.items as Record<string, unknown>[])
+          : [];
+        turnItems.forEach((item) => {
+          applyCollabThreadLinks(fallbackThreadId, item);
+        });
+      });
+    },
+    [applyCollabThreadLinks],
+  );
+
   const handleItemUpdate = useCallback(
     (
       workspaceId: string,
@@ -463,6 +549,7 @@ export function useThreads({
       if (shouldMarkProcessing) {
         markProcessing(threadId, true);
       }
+      applyCollabThreadLinks(threadId, item);
       const itemType = asString(item?.type ?? "");
       if (itemType === "enteredReviewMode") {
         dispatch({ type: "markReviewing", threadId, isReviewing: true });
@@ -476,7 +563,7 @@ export function useThreads({
       }
       safeMessageActivity();
     },
-    [markProcessing, safeMessageActivity],
+    [applyCollabThreadLinks, markProcessing, safeMessageActivity],
   );
 
   const handleToolOutputDelta = useCallback(
@@ -527,7 +614,7 @@ export function useThreads({
       }) => {
         dispatch({ type: "ensureThread", workspaceId, threadId });
         markProcessing(threadId, true);
-        dispatch({ type: "appendAgentDelta", threadId, itemId, delta });
+        dispatch({ type: "appendAgentDelta", workspaceId, threadId, itemId, delta });
       },
       onAgentMessageCompleted: ({
         workspaceId,
@@ -542,7 +629,13 @@ export function useThreads({
       }) => {
         const timestamp = Date.now();
         dispatch({ type: "ensureThread", workspaceId, threadId });
-        dispatch({ type: "completeAgentMessage", threadId, itemId, text });
+        dispatch({
+          type: "completeAgentMessage",
+          workspaceId,
+          threadId,
+          itemId,
+          text,
+        });
         dispatch({
           type: "setLastAgentMessage",
           threadId,
@@ -775,6 +868,7 @@ export function useThreads({
           | Record<string, unknown>
           | null;
         if (thread) {
+          applyCollabThreadLinksFromThread(threadId, thread);
           const items = buildItemsFromThread(thread);
           const localItems = state.itemsByThread[threadId] ?? [];
           const mergedItems =
@@ -827,7 +921,7 @@ export function useThreads({
         return null;
       }
     },
-    [onDebug, state.itemsByThread],
+    [applyCollabThreadLinksFromThread, onDebug, state.itemsByThread],
   );
 
   const listThreadsForWorkspace = useCallback(
@@ -1432,6 +1526,7 @@ export function useThreads({
     activeItems,
     approvals: state.approvals,
     threadsByWorkspace: state.threadsByWorkspace,
+    threadParentById: state.threadParentById,
     threadStatusById: state.threadStatusById,
     threadListLoadingByWorkspace: state.threadListLoadingByWorkspace,
     threadListPagingByWorkspace: state.threadListPagingByWorkspace,

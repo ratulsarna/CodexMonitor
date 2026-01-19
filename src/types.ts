@@ -78,6 +78,11 @@ export type AppSettings = {
   remoteBackendHost: string;
   remoteBackendToken: string | null;
   defaultAccessMode: AccessMode;
+  composerModelShortcut: string | null;
+  composerAccessShortcut: string | null;
+  composerReasoningShortcut: string | null;
+  lastComposerModelId: string | null;
+  lastComposerReasoningEffort: string | null;
   uiScale: number;
   notificationSoundsEnabled: boolean;
   experimentalCollabEnabled: boolean;
@@ -159,6 +164,8 @@ export type GitHubPullRequest = {
   title: string;
   url: string;
   updatedAt: string;
+  createdAt: string;
+  body: string;
   headRefName: string;
   baseRefName: string;
   isDraft: boolean;
@@ -174,6 +181,14 @@ export type GitHubPullRequestDiff = {
   path: string;
   status: string;
   diff: string;
+};
+
+export type GitHubPullRequestComment = {
+  id: number;
+  body: string;
+  createdAt: string;
+  url: string;
+  author: GitHubUser | null;
 };
 
 export type TokenUsageBreakdown = {
