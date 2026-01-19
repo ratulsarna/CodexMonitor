@@ -79,10 +79,22 @@ function suggestCopiesFolder(workspacePath: string) {
   return joinPath(parent, `${repoName}-copies`);
 }
 
-function defaultCopyName() {
+function slugifyWorkspaceName(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || null;
+}
+
+function defaultCopyName(workspace: WorkspaceInfo) {
+  const repoName = basename(workspace.path);
+  const slug = slugifyWorkspaceName(repoName)?.slice(0, 24) ?? null;
   const date = new Date().toISOString().slice(0, 10);
   const suffix = Math.random().toString(36).slice(2, 6);
-  return `copy-${date}-${suffix}`;
+  return slug ? `copy-${date}-${suffix}-${slug}` : `copy-${date}-${suffix}`;
 }
 
 export function useClonePrompt({
@@ -101,7 +113,7 @@ export function useClonePrompt({
       const { groupId, copiesFolder } = resolveProjectContext(workspace);
       setClonePrompt({
         workspace,
-        copyName: defaultCopyName(),
+        copyName: defaultCopyName(workspace),
         copiesFolder: copiesFolder ?? "",
         initialCopiesFolder: copiesFolder ?? "",
         groupId,
@@ -237,4 +249,3 @@ export function useClonePrompt({
     clearCopiesFolder,
   };
 }
-
