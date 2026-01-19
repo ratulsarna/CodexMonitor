@@ -1172,13 +1172,9 @@ export function useThreads({
                 normalizeRootPath(String(thread?.cwd ?? "")) === workspacePath,
             ),
           );
-          if (
-            matchingThreads.length === 0 &&
-            pagesFetched >= maxPagesWithoutMatch
-          ) {
-            cursor = null;
-          } else {
-            cursor = nextCursor;
+          cursor = nextCursor;
+          if (matchingThreads.length === 0 && pagesFetched >= maxPagesWithoutMatch) {
+            break;
           }
         } while (cursor && matchingThreads.length < targetCount);
 
@@ -1308,8 +1304,11 @@ export function useThreads({
         const matchingThreads: Record<string, unknown>[] = [];
         const targetCount = 20;
         const pageSize = 20;
+        const maxPagesWithoutMatch = 10;
+        let pagesFetched = 0;
         let cursor: string | null = nextCursor;
         do {
+          pagesFetched += 1;
           const response =
             (await listThreadsService(
               workspace.id,
@@ -1336,6 +1335,9 @@ export function useThreads({
             ),
           );
           cursor = next;
+          if (matchingThreads.length === 0 && pagesFetched >= maxPagesWithoutMatch) {
+            break;
+          }
         } while (cursor && matchingThreads.length < targetCount);
 
         const existingIds = new Set(existing.map((thread) => thread.id));
