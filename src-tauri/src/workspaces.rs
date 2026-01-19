@@ -255,6 +255,14 @@ fn build_clone_destination_path(copies_folder: &PathBuf, copy_name: &str) -> Pat
     unique_worktree_path(copies_folder, &safe_name)
 }
 
+fn null_device_path() -> &'static str {
+    if cfg!(windows) {
+        "NUL"
+    } else {
+        "/dev/null"
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn list_workspaces(
     state: State<'_, AppState>,
@@ -735,7 +743,7 @@ pub(crate) async fn apply_worktree_changes(
                 "--no-color",
                 "--no-index",
                 "--",
-                "/dev/null",
+                null_device_path(),
                 &path,
             ],
         )
